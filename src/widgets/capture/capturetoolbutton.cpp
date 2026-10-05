@@ -8,6 +8,7 @@
 #include "utils/globalvalues.h"
 
 #include <QApplication>
+#include <QFontMetrics>
 #include <QIcon>
 #include <QMouseEvent>
 #include <QPainter>
@@ -80,7 +81,7 @@ void CaptureToolButton::initButton()
 void CaptureToolButton::updateIcon()
 {
     setIcon(icon());
-    setIconSize(size() * 0.6);
+    setIconSize(size() * (m_iconLabel.isEmpty() ? 0.6 : 0.85));
 }
 
 const QList<CaptureTool::Type>& CaptureToolButton::getIterableButtonTypes()
@@ -101,7 +102,12 @@ QIcon CaptureToolButton::icon() const
                                                         : Qt::black);
     QFont labelFont = font();
     labelFont.setBold(true);
-    labelFont.setPixelSize(28);
+    labelFont.setPixelSize(44);
+    const int textWidth =
+      QFontMetrics(labelFont).horizontalAdvance(m_iconLabel);
+    if (textWidth > pixmap.width() - 8) {
+        labelFont.setPixelSize(qMax(8, 44 * (pixmap.width() - 8) / textWidth));
+    }
     painter.setFont(labelFont);
     painter.drawText(pixmap.rect(), Qt::AlignCenter, m_iconLabel);
     return QIcon(pixmap);

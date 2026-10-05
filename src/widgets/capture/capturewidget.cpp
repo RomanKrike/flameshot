@@ -32,13 +32,18 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QFontMetrics>
+#include <QFormLayout>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QScreen>
 #include <QShortcut>
+#include <QVBoxLayout>
 #include <QWindow>
 
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -305,6 +310,9 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
 
 CaptureWidget::~CaptureWidget()
 {
+    // QWidget hides its children after this class's members are destroyed.
+    // Prevent the selection's hide event from accessing those members.
+    disconnect(m_selection, nullptr, this, nullptr);
 #if defined(Q_OS_MACOS)
     for (QWidget* widget : qApp->topLevelWidgets()) {
         QString className(widget->metaObject()->className());
@@ -431,6 +439,14 @@ const AspectRatioPreset aspectRatioPresets[] = {
     { "3:2", 3.0 / 2 }, { "16:9", 16.0 / 9 }, { "9:16", 9.0 / 16 }
 };
 constexpr int aspectRatioPresetCount = 6;
+constexpr int currentAspectRatioPreset = aspectRatioPresetCount;
+constexpr int customAspectRatioPreset = aspectRatioPresetCount + 1;
+
+QString customAspectRatioLabel(const QSizeF& ratio)
+{
+    return QStringLiteral("%1:%2").arg(QString::number(ratio.width(), 'g', 7),
+                                       QString::number(ratio.height(), 'g', 7));
+}
 }
 
 void CaptureWidget::showAspectRatioMenu()
@@ -467,17 +483,83 @@ void CaptureWidget::showAspectRatioMenu()
     const bool hasSelection = m_selection->isVisible() && current.isValid();
     auto* currentAction = addRatioAction(
       tr("Current"),
-      aspectRatioPresetCount,
+      currentAspectRatioPreset,
       hasSelection ? double(current.width()) / current.height() : 0);
     currentAction->setEnabled(hasSelection);
+    auto* customAction = menu->addAction(
+      m_aspectRatioPreset == customAspectRatioPreset
+        ? tr("Custom… (%1)").arg(customAspectRatioLabel(m_customAspectRatio))
+        : tr("Custom…"));
+    customAction->setCheckable(true);
+    customAction->setChecked(m_aspectRatioPreset == customAspectRatioPreset);
+    group->addAction(customAction);
+    connect(customAction,
+            &QAction::triggered,
+            this,
+            &CaptureWidget::showCustomAspectRatioDialog);
     connect(menu, &QMenu::aboutToHide, menu, &QObject::deleteLater);
     menu->popup(QCursor::pos());
 }
 
+void CaptureWidget::showCustomAspectRatioDialog()
+{
+    if (m_customAspectRatioDialog) {
+        m_customAspectRatioDialog->raise();
+        m_customAspectRatioDialog->activateWindow();
+        return;
+    }
+    auto* dialog = new QDialog(this);
+    m_customAspectRatioDialog = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(tr("Custom aspect ratio"));
+    connect(dialog, &QDialog::finished, this, [this, dialog]() {
+        if (m_customAspectRatioDialog == dialog) {
+            m_customAspectRatioDialog = nullptr;
+        }
+    });
+    auto* layout = new QVBoxLayout(dialog);
+    auto* form = new QFormLayout;
+    layout->addLayout(form);
+    const auto makeInput = [dialog](double value, const QString& name) {
+        auto* input = new QDoubleSpinBox(dialog);
+        input->setObjectName(name);
+        input->setDecimals(3);
+        input->setRange(0.001, 10000);
+        input->setValue(value);
+        input->setKeyboardTracking(false);
+        return input;
+    };
+    auto* width = makeInput(m_customAspectRatio.width(),
+                            QStringLiteral("aspectRatioWidth"));
+    auto* height = makeInput(m_customAspectRatio.height(),
+                             QStringLiteral("aspectRatioHeight"));
+    form->addRow(tr("Width"), width);
+    form->addRow(tr("Height"), height);
+    auto* buttons = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+    connect(dialog, &QDialog::accepted, this, [this, width, height]() {
+        // Interpret any pending text before taking the snapshot. Cancelling
+        // the dialog leaves both the selected mode and these values unchanged.
+        width->interpretText();
+        height->interpretText();
+        m_customAspectRatio = QSizeF(width->value(), height->value());
+        m_aspectRatioPreset = customAspectRatioPreset;
+        m_selection->setAspectRatio(width->value() / height->value());
+        updateAspectRatioButton();
+    });
+    width->selectAll();
+    width->setFocus();
+    dialog->open();
+}
+
 void CaptureWidget::cycleAspectRatio(int steps)
 {
-    // Current is intentionally excluded: cycling always selects a known preset.
-    const int start = m_aspectRatioPreset % aspectRatioPresetCount;
+    // Current and Custom are excluded: cycling selects a known preset.
+    const int start =
+      m_aspectRatioPreset < aspectRatioPresetCount ? m_aspectRatioPreset : 0;
     m_aspectRatioPreset =
       ((start + steps) % aspectRatioPresetCount + aspectRatioPresetCount) %
       aspectRatioPresetCount;
@@ -491,12 +573,16 @@ void CaptureWidget::updateAspectRatioButton()
         return;
     }
     const QString label =
-      m_aspectRatioPreset == aspectRatioPresetCount ? tr("Current")
+      m_aspectRatioPreset == customAspectRatioPreset
+        ? customAspectRatioLabel(m_customAspectRatio)
+      : m_aspectRatioPreset == currentAspectRatioPreset ? tr("Current")
       : m_aspectRatioPreset == 0
         ? tr("Free")
         : QString::fromLatin1(aspectRatioPresets[m_aspectRatioPreset].label);
     m_aspectRatioButton->setIconLabel(
-      m_aspectRatioPreset > 0 && m_aspectRatioPreset < aspectRatioPresetCount
+      (m_aspectRatioPreset > 0 &&
+       m_aspectRatioPreset < aspectRatioPresetCount) ||
+          m_aspectRatioPreset == customAspectRatioPreset
         ? label
         : QString());
     m_aspectRatioButton->setToolTip(

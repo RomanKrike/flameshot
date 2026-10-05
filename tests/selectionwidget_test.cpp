@@ -55,6 +55,9 @@ private slots:
         QTest::newRow("landscape-3-2") << 3.0 / 2;
         QTest::newRow("landscape-16-9") << 16.0 / 9;
         QTest::newRow("portrait") << 9.0 / 16;
+        QTest::newRow("custom-ultrawide") << 21.0 / 9;
+        QTest::newRow("custom-decimal") << 2.35;
+        QTest::newRow("custom-pixels") << 1000.0 / 563;
     }
     void boundedGeometry()
     {

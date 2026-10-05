@@ -5,7 +5,12 @@ new configurations; existing users can enable it in **Configuration → Interfac
 → Button Selection** without changing the rest of their toolbar.
 
 Click the button to choose **Free**, **1:1**, **4:3**, **3:2**, **16:9**, **9:16**,
-or **Current**. Current snapshots the selected area's ratio and is unavailable
+**Current**, or **Custom…**. Custom opens width/height ratio inputs (positive
+numbers from 0.001 to 10000, up to three decimal places), for example **21:9**,
+**2.35:1**, or **1000:563**. Confirming applies the ratio and shows its values on
+the button; cancelling leaves the previous mode unchanged. The last confirmed
+custom values remain available during this capture and reset for the next one.
+Current snapshots the selected area's ratio and is unavailable
 before an area has been selected. Changing a preset reshapes the existing area
 around its centre, preserving its width where the capture bounds allow it.
 

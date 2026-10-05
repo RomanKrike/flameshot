@@ -204,6 +204,11 @@
 </context>
 <context>
     <name>CaptureWidget</name>
+    <message><source>Custom…</source><translation>Своё соотношение…</translation></message>
+    <message><source>Custom… (%1)</source><translation>Своё соотношение… (%1)</translation></message>
+    <message><source>Custom aspect ratio</source><translation>Своё соотношение сторон</translation></message>
+    <message><source>Width</source><translation>Ширина</translation></message>
+    <message><source>Height</source><translation>Высота</translation></message>
     <message><source>Free</source><translation>Свободно</translation></message>
     <message><source>Current</source><translation>Текущее</translation></message>
     <message><source>Selection aspect ratio: %1 (scroll to change)</source><translation>Соотношение сторон: %1 (прокрутите для переключения)</translation></message>
