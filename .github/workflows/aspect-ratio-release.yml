@@ -11,16 +11,16 @@ permissions:
   contents: write
 
 concurrency:
-  group: aspect-ratio-release-v15.0.0-aspect-ratio.1
+  group: aspect-ratio-release-v15.0.0-aspect-ratio.2
   cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-24.04
     env:
-      RELEASE_TAG: v15.0.0-aspect-ratio.1
-      RELEASE_COMMIT: be27abb68f7c5ad8ae12616426b7610a877eec16
-      PACKAGE_RUN: '37282957753'
+      RELEASE_TAG: v15.0.0-aspect-ratio.2
+      RELEASE_COMMIT: 59a64651aa8c9a51086144977d40d93370710aea
+      PACKAGE_RUN: '37287482471'
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -36,7 +36,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: 37282957753
+          run-id: 37287482471
           pattern: flameshot-*-artifact-win-x64-*
           path: packages
           merge-multiple: true
@@ -71,7 +71,10 @@ jobs:
           cat > notes.md <<'NOTES'
           Test release of the selection aspect ratio feature for Windows x64.
 
-          - Toolbar presets: Free, 1:1, 4:3, 3:2, 16:9, 9:16 and Current.
+          - Toolbar presets: Free, 1:1, 4:3, 3:2, 16:9, 9:16, Current and Custom.
+          - Custom positive decimal width/height inputs: 21:9, 2.35:1 or 1000:563.
+          - Larger ratio labels, with longer custom values fitted to the button.
+          - Safe capture teardown, including when the custom dialog is open.
           - Ratio lock for new areas, all resize handles and keyboard resizing.
           - Wheel cycling over the aspect ratio button; Russian translation.
           - Every new capture starts in Free mode.
@@ -80,8 +83,9 @@ jobs:
           Для текущего профиля включите «Соотношение сторон выделения» в разделе «Выбор кнопок».
 
           Download the MSI installer or the portable ZIP. SHA-256 files are included.
-          Built from be27abb68f7c5ad8ae12616426b7610a877eec16; Windows packaging,
-          Linux/Windows CMake builds and 66 Qt regression checks passed.
+          Built from 59a64651aa8c9a51086144977d40d93370710aea; Windows packaging,
+          Linux/Windows CMake builds and 69 Qt regression checks passed.
+          Custom dialog integration and capture teardown checked with Valgrind (zero memory errors).
           This is a prerelease of the fork, not an official Flameshot release.
           NOTES
           # A rerun never replaces a published release or its assets.
@@ -91,7 +95,7 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" \
             --target "$RELEASE_COMMIT" \
-            --title "Flameshot 15.0.0 — Selection Aspect Ratio (test)" \
+            --title "Flameshot 15.0.0 — Selection Aspect Ratio + Custom (test 2)" \
             --notes-file notes.md --prerelease \
             packages/flameshot-15.0.0-win64.zip \
             packages/flameshot-15.0.0-win64.zip.sha256sum \
