@@ -40,6 +40,10 @@ public:
 
     QRect rect() const;
 
+    // Zero means free selection. The lock belongs to this capture session.
+    void setAspectRatio(double ratio);
+    double aspectRatio() const;
+
 protected:
     bool eventFilter(QObject*, QEvent*) override;
     void parentMousePressEvent(QMouseEvent* e);
@@ -58,6 +62,7 @@ signals:
     void geometryChanged();
     void geometrySettled();
     void visibilityChanged();
+    void aspectRatioChanged(double ratio);
 
 public slots:
     void updateColor(const QColor& c);
@@ -81,6 +86,11 @@ private:
     void updateAreas();
     void updateCursor();
     void setGeometryByKeyboard(const QRect& r);
+    void applyGeometry(const QRect& r);
+    QRect resizedGeometry(const QPoint& pos,
+                          bool symmetric,
+                          double ratio,
+                          SideType& activeSide) const;
 
     QPropertyAnimation* m_animation;
 
@@ -93,7 +103,11 @@ private:
     QCursor m_idleCentralCursor;
     bool m_ignoreMouse;
     bool m_mouseStartMove;
-    float m_aspectRatio;
+    double m_dragAspectRatio{ 1 };
+    double m_lockedAspectRatio{ 0 };
+    bool m_creatingSelection{ false };
+    QRect m_dragGeometry;
+    SideType m_resizeSide{ NO_SIDE };
 
     // naming convention for handles
     // T top, B bottom, R Right, L left

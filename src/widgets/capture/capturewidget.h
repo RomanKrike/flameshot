@@ -22,11 +22,14 @@
 
 #include <QMessageBox>
 #include <QPointer>
+#include <QSizeF>
 #include <QTimer>
 #include <QUndoStack>
 #include <QWidget>
 
 class QLabel;
+class QMenu;
+class QDialog;
 class QPaintEvent;
 class QResizeEvent;
 class QMouseEvent;
@@ -125,6 +128,10 @@ private:
     void initSelection();
     void initShortcuts();
     void initButtons();
+    void showAspectRatioMenu();
+    void showCustomAspectRatioDialog();
+    void cycleAspectRatio(int steps);
+    void updateAspectRatioButton();
     void initHelpMessage();
     void initQuitPrompt();
     void updateSizeIndicator();
@@ -188,6 +195,12 @@ private:
 #endif
     quint64 m_lastMouseWheel;
     QPointer<CaptureToolButton> m_sizeIndButton;
+    QPointer<CaptureToolButton> m_aspectRatioButton;
+    QPointer<QMenu> m_aspectRatioMenu;
+    QPointer<QDialog> m_customAspectRatioDialog;
+    QSizeF m_customAspectRatio{ 16, 9 };
+    // 0: Free, 1..5: presets, 6: Current, 7: Custom.
+    int m_aspectRatioPreset{ 0 };
     // Last pressed button
     QPointer<CaptureToolButton> m_activeButton;
     QPointer<CaptureTool> m_activeTool;

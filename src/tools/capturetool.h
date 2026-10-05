@@ -51,6 +51,7 @@ public:
         TYPE_INVERT = 22,
         TYPE_ACCEPT = 23,
         TYPE_CANCEL = 24,
+        TYPE_ASPECTRATIO = 25,
     };
     Q_ENUM(Type);
 
@@ -80,7 +81,8 @@ public:
         // decrease tool size for all tools
         REQ_DECREASE_TOOL_SIZE,
         // Commit the active tool.
-        REQ_COMMIT_CURRENT_TOOL
+        REQ_COMMIT_CURRENT_TOOL,
+        REQ_SHOW_ASPECT_RATIO_MENU
     };
 
     explicit CaptureTool(QObject* parent = nullptr)

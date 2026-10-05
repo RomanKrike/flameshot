@@ -23,6 +23,8 @@ target_sources(
         hovereventfilter.cpp
         overlaymessage.cpp
         notifierbox.cpp
+        selectiongeometry.cpp
+        selectiongeometry.h
         selectionwidget.cpp
         magnifierwidget.cpp
         modificationcommand.cpp)

@@ -31,9 +31,11 @@ public:
 
     void setColor(const QColor& c);
     void animatedShow();
+    void setIconLabel(const QString& label);
 
 protected:
     void mousePressEvent(QMouseEvent* e) override;
+    void wheelEvent(QWheelEvent* e) override;
     static QList<CaptureTool::Type> iterableButtonTypes;
 
     CaptureTool* m_tool;
@@ -41,10 +43,13 @@ protected:
 signals:
     void pressedButtonLeftClick(CaptureToolButton*);
     void pressedButtonRightClick(CaptureToolButton*);
+    void wheelSteps(int steps);
 
 private:
     CaptureToolButton(QWidget* parent = nullptr);
     CaptureTool::Type m_buttonType;
+    QString m_iconLabel;
+    int m_wheelDelta{ 0 };
 
     QPropertyAnimation* m_emergeAnimation;
 
