@@ -19,16 +19,32 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: v15.0.0-aspect-ratio.2
-      RELEASE_COMMIT: 59a64651aa8c9a51086144977d40d93370710aea
+      RELEASE_COMMIT: 7fd4c19ccae0f193f609e3ec792dba4741917988
+      PACKAGE_COMMIT: 59a64651aa8c9a51086144977d40d93370710aea
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       PACKAGE_RUN: '37287482471'
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_COMMIT }}
+          fetch-depth: 0
+
+      - name: Verify release application and workflow sources
+        shell: bash
+        run: |
+          # Application sources must match the tested package commit exactly.
+          git diff --exit-code "$PACKAGE_COMMIT" "$RELEASE_COMMIT" -- . ':(exclude).github/workflows'
+          # The standard Actions token cannot publish changed workflow files.
+          git diff --exit-code "origin/$DEFAULT_BRANCH" "$RELEASE_COMMIT" -- .github/workflows
+
       - name: Verify the packaging run
         shell: bash
         run: |
           gh api "repos/$GH_REPO/actions/runs/$PACKAGE_RUN" > run.json
-          jq -e --arg commit "$RELEASE_COMMIT" \
+          jq -e --arg commit "$PACKAGE_COMMIT" \
             '.conclusion == "success" and .head_sha == $commit and .event == "pull_request"' run.json
 
       - name: Download verified Windows packages
@@ -86,6 +102,7 @@ jobs:
           Built from 59a64651aa8c9a51086144977d40d93370710aea; Windows packaging,
           Linux/Windows CMake builds and 69 Qt regression checks passed.
           Custom dialog integration and capture teardown checked with Valgrind (zero memory errors).
+          Tagged source 7fd4c19ccae0f193f609e3ec792dba4741917988 restores default CI workflow metadata; application sources match the tested package commit exactly.
           This is a prerelease of the fork, not an official Flameshot release.
           NOTES
           # A rerun never replaces a published release or its assets.
