@@ -53,11 +53,15 @@ jobs:
           from pathlib import Path
           for name in ('flameshot-15.0.0-win64.zip', 'Flameshot-15.0.0-win64.msi'):
               checksum = Path('packages', name + '.sha256sum').read_text().split()
-              if len(checksum) != 2 or Path(checksum[1].lstrip('*')).name != name:
+              if len(checksum) != 2 or Path(checksum[1].lstrip('*').replace('\\', '/')).name != name:
                   raise SystemExit('Invalid checksum entry: ' + name)
               actual = hashlib.sha256(Path('packages', name).read_bytes()).hexdigest()
-              if actual != checksum[0]:
-                  raise SystemExit('Checksum mismatch: ' + name)
+              # GNU sha256sum prefixes the digest with a backslash when
+              # escaping backslashes in Windows absolute filenames.
+              expected = checksum[0].removeprefix('\\')
+              if actual != expected:
+                  raise SystemExit(f'Checksum mismatch: {name}: expected {expected}, actual {actual}')
+              print('SHA-256 verified:', name)
               Path('packages', name + '.sha256sum').write_text(actual + '  ' + name + '\n')
           PY
 
