@@ -10,8 +10,10 @@
 #include <QApplication>
 #include <QIcon>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPropertyAnimation>
 #include <QToolTip>
+#include <QWheelEvent>
 
 // Button represents a single button of the capture widget, it can enable
 // multiple functionality.
@@ -89,7 +91,20 @@ const QList<CaptureTool::Type>& CaptureToolButton::getIterableButtonTypes()
 // get icon returns the icon for the type of button
 QIcon CaptureToolButton::icon() const
 {
-    return m_tool->icon(m_mainColor, true);
+    if (m_iconLabel.isEmpty()) {
+        return m_tool->icon(m_mainColor, true);
+    }
+    QPixmap pixmap(96, 96);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setPen(ColorUtils::colorIsDark(m_mainColor) ? Qt::white
+                                                        : Qt::black);
+    QFont labelFont = font();
+    labelFont.setBold(true);
+    labelFont.setPixelSize(28);
+    painter.setFont(labelFont);
+    painter.drawText(pixmap.rect(), Qt::AlignCenter, m_iconLabel);
+    return QIcon(pixmap);
 }
 
 void CaptureToolButton::mousePressEvent(QMouseEvent* e)
@@ -102,6 +117,27 @@ void CaptureToolButton::mousePressEvent(QMouseEvent* e)
         emit pressedButtonRightClick(this);
         emit pressed();
     }
+}
+
+void CaptureToolButton::setIconLabel(const QString& label)
+{
+    m_iconLabel = label;
+    updateIcon();
+}
+
+void CaptureToolButton::wheelEvent(QWheelEvent* e)
+{
+    if (m_buttonType != CaptureTool::TYPE_ASPECTRATIO) {
+        CaptureButton::wheelEvent(e);
+        return;
+    }
+    m_wheelDelta += e->angleDelta().y();
+    const int steps = m_wheelDelta / 120;
+    m_wheelDelta %= 120;
+    if (steps != 0) {
+        emit wheelSteps(steps);
+    }
+    e->accept();
 }
 
 void CaptureToolButton::animatedShow()
@@ -138,6 +174,7 @@ static std::map<CaptureTool::Type, int> buttonTypeOrder
       { CaptureTool::TYPE_MARKER, 6 }, { CaptureTool::TYPE_TEXT, 7 },
       { CaptureTool::TYPE_PIXELATE, 8 }, { CaptureTool::TYPE_INVERT, 9 },
       { CaptureTool::TYPE_CIRCLECOUNT, 10 },
+      { CaptureTool::TYPE_ASPECTRATIO, 11 },
       { CaptureTool::TYPE_MOVESELECTION, 12 }, { CaptureTool::TYPE_UNDO, 13 },
       { CaptureTool::TYPE_REDO, 14 }, { CaptureTool::TYPE_COPY, 15 },
       { CaptureTool::TYPE_SAVE, 16 },
@@ -181,4 +218,5 @@ QList<CaptureTool::Type> CaptureToolButton::iterableButtonTypes = {
 #endif
     CaptureTool::TYPE_PIN,           CaptureTool::TYPE_SIZEINCREASE,
     CaptureTool::TYPE_SIZEDECREASE,  CaptureTool::TYPE_ACCEPT,
+    CaptureTool::TYPE_ASPECTRATIO,
 };

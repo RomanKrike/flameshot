@@ -204,6 +204,9 @@
 </context>
 <context>
     <name>CaptureWidget</name>
+    <message><source>Free</source><translation>Свободно</translation></message>
+    <message><source>Current</source><translation>Текущее</translation></message>
+    <message><source>Selection aspect ratio: %1 (scroll to change)</source><translation>Соотношение сторон: %1 (прокрутите для переключения)</translation></message>
     <message>
         <source>Unable to capture screen</source>
         <translation type="vanished">Не удалось захватить экран</translation>
@@ -3563,5 +3566,10 @@ You can find me in the system tray.</source>
         <source>%1 (%2)</source>
         <translation>%1 (%2)</translation>
     </message>
+</context>
+<context>
+    <name>AspectRatioTool</name>
+    <message><source>Selection Aspect Ratio</source><translation>Соотношение сторон выделения</translation></message>
+    <message><source>Choose the selection aspect ratio</source><translation>Выбрать соотношение сторон выделения</translation></message>
 </context>
 </TS>

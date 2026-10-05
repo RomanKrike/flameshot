@@ -4,6 +4,7 @@
 #include "toolfactory.h"
 #include "tools/accept/accepttool.h"
 #include "tools/arrow/arrowtool.h"
+#include "tools/aspectratio/aspectratiotool.h"
 #include "tools/circle/circletool.h"
 #include "tools/circlecount/circlecounttool.h"
 #include "tools/copy/copytool.h"
@@ -43,6 +44,7 @@ CaptureTool* ToolFactory::CreateTool(CaptureTool::Type t, QObject* parent)
         if_TYPE_return_TOOL(TYPE_DRAWER, LineTool);
         if_TYPE_return_TOOL(TYPE_ARROW, ArrowTool);
         if_TYPE_return_TOOL(TYPE_SELECTION, SelectionTool);
+        if_TYPE_return_TOOL(TYPE_ASPECTRATIO, AspectRatioTool);
         if_TYPE_return_TOOL(TYPE_RECTANGLE, RectangleTool);
         if_TYPE_return_TOOL(TYPE_CIRCLE, CircleTool);
         if_TYPE_return_TOOL(TYPE_MARKER, MarkerTool);

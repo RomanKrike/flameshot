@@ -27,6 +27,7 @@
 #include <QWidget>
 
 class QLabel;
+class QMenu;
 class QPaintEvent;
 class QResizeEvent;
 class QMouseEvent;
@@ -125,6 +126,9 @@ private:
     void initSelection();
     void initShortcuts();
     void initButtons();
+    void showAspectRatioMenu();
+    void cycleAspectRatio(int steps);
+    void updateAspectRatioButton();
     void initHelpMessage();
     void initQuitPrompt();
     void updateSizeIndicator();
@@ -188,6 +192,10 @@ private:
 #endif
     quint64 m_lastMouseWheel;
     QPointer<CaptureToolButton> m_sizeIndButton;
+    QPointer<CaptureToolButton> m_aspectRatioButton;
+    QPointer<QMenu> m_aspectRatioMenu;
+    // 0: Free, 1..5: presets, 6: Current (a snapshot of the current ratio).
+    int m_aspectRatioPreset{ 0 };
     // Last pressed button
     QPointer<CaptureToolButton> m_activeButton;
     QPointer<CaptureTool> m_activeTool;

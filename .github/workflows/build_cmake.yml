@@ -70,7 +70,7 @@ jobs:
         # Note the current convention is to use the -S and -B options here to specify source
         # and build directories. We need to source the profile file to make sure conan is in PATH
         run: |
-          cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+          cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_TESTING=ON
       - name: Build
         working-directory: ${{runner.workspace}}/build
         shell: bash
@@ -120,10 +120,15 @@ jobs:
         working-directory: build
         shell: powershell
         run: |
-          cmake -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE ../
+          cmake -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE -DBUILD_TESTING=ON ../
 
       - name: Build
         working-directory: build
         shell: powershell
         run: |
           cmake --build . --config $env:BUILD_TYPE
+
+      - name: Test
+        working-directory: build
+        shell: powershell
+        run: ctest -C $env:BUILD_TYPE --output-on-failure

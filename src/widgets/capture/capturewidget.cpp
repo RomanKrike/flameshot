@@ -28,10 +28,12 @@
 #include "widgets/panel/sidepanelwidget.h"
 #include "widgets/panel/utilitypanel.h"
 
+#include <QActionGroup>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDateTime>
 #include <QFontMetrics>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPaintEvent>
 #include <QPainter>
@@ -384,6 +386,13 @@ void CaptureWidget::initButtons()
                 break;
         }
 
+        if (t == CaptureTool::TYPE_ASPECTRATIO) {
+            m_aspectRatioButton = b;
+            connect(b,
+                    &CaptureToolButton::wheelSteps,
+                    this,
+                    &CaptureWidget::cycleAspectRatio);
+        }
         m_tools[t] = b->tool();
 
         connect(b->tool(),
@@ -408,6 +417,90 @@ void CaptureWidget::initButtons()
         }
     }
     m_buttonHandler->setButtons(vectorButtons);
+    updateAspectRatioButton();
+}
+
+namespace {
+struct AspectRatioPreset
+{
+    const char* label;
+    double ratio;
+};
+const AspectRatioPreset aspectRatioPresets[] = {
+    { "", 0 },          { "1:1", 1 },         { "4:3", 4.0 / 3 },
+    { "3:2", 3.0 / 2 }, { "16:9", 16.0 / 9 }, { "9:16", 9.0 / 16 }
+};
+constexpr int aspectRatioPresetCount = 6;
+}
+
+void CaptureWidget::showAspectRatioMenu()
+{
+    if (m_aspectRatioMenu) {
+        m_aspectRatioMenu->close();
+    }
+    auto* menu = new QMenu(this);
+    m_aspectRatioMenu = menu;
+    auto* group = new QActionGroup(menu);
+    group->setExclusive(true);
+    const auto addRatioAction =
+      [this, menu, group](const QString& label, int preset, double ratio) {
+          auto* action = menu->addAction(label);
+          action->setCheckable(true);
+          action->setChecked(m_aspectRatioPreset == preset);
+          group->addAction(action);
+          connect(action, &QAction::triggered, this, [this, preset, ratio]() {
+              m_aspectRatioPreset = preset;
+              m_selection->setAspectRatio(ratio);
+              updateAspectRatioButton();
+          });
+          return action;
+      };
+    addRatioAction(tr("Free"), 0, 0);
+    menu->addSeparator();
+    for (int i = 1; i < aspectRatioPresetCount; ++i) {
+        addRatioAction(QString::fromLatin1(aspectRatioPresets[i].label),
+                       i,
+                       aspectRatioPresets[i].ratio);
+    }
+    menu->addSeparator();
+    const QRect current = m_selection->geometry();
+    const bool hasSelection = m_selection->isVisible() && current.isValid();
+    auto* currentAction = addRatioAction(
+      tr("Current"),
+      aspectRatioPresetCount,
+      hasSelection ? double(current.width()) / current.height() : 0);
+    currentAction->setEnabled(hasSelection);
+    connect(menu, &QMenu::aboutToHide, menu, &QObject::deleteLater);
+    menu->popup(QCursor::pos());
+}
+
+void CaptureWidget::cycleAspectRatio(int steps)
+{
+    // Current is intentionally excluded: cycling always selects a known preset.
+    const int start = m_aspectRatioPreset % aspectRatioPresetCount;
+    m_aspectRatioPreset =
+      ((start + steps) % aspectRatioPresetCount + aspectRatioPresetCount) %
+      aspectRatioPresetCount;
+    m_selection->setAspectRatio(aspectRatioPresets[m_aspectRatioPreset].ratio);
+    updateAspectRatioButton();
+}
+
+void CaptureWidget::updateAspectRatioButton()
+{
+    if (!m_aspectRatioButton) {
+        return;
+    }
+    const QString label =
+      m_aspectRatioPreset == aspectRatioPresetCount ? tr("Current")
+      : m_aspectRatioPreset == 0
+        ? tr("Free")
+        : QString::fromLatin1(aspectRatioPresets[m_aspectRatioPreset].label);
+    m_aspectRatioButton->setIconLabel(
+      m_aspectRatioPreset > 0 && m_aspectRatioPreset < aspectRatioPresetCount
+        ? label
+        : QString());
+    m_aspectRatioButton->setToolTip(
+      tr("Selection aspect ratio: %1 (scroll to change)").arg(label));
 }
 
 void CaptureWidget::handleButtonRightClick(CaptureToolButton* b)
@@ -1394,6 +1487,10 @@ void CaptureWidget::setState(CaptureToolButton* b)
         return;
     }
 
+    if (b->tool()->type() == CaptureTool::TYPE_ASPECTRATIO) {
+        b->tool()->pressed(m_context);
+        return;
+    }
     commitCurrentTool();
     if (m_toolWidget && m_activeTool) {
         if (m_activeTool->isValid()) {
@@ -1447,6 +1544,9 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
             break;
         case CaptureTool::REQ_REDO_MODIFICATION:
             redo();
+            break;
+        case CaptureTool::REQ_SHOW_ASPECT_RATIO_MENU:
+            showAspectRatioMenu();
             break;
         case CaptureTool::REQ_SHOW_COLOR_PICKER:
             // TODO

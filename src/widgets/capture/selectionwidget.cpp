@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: 2017-2019 Alejandro Sirgo Rica & Contributors
 
 #include "selectionwidget.h"
+#include "selectiongeometry.h"
 #include "utils/globalvalues.h"
-#include "widgets/capture/capturetoolbutton.h"
 
 #include <QApplication>
 #include <QEvent>
@@ -11,6 +11,7 @@
 #include <QPainter>
 #include <QPropertyAnimation>
 #include <QTimer>
+#include <cmath>
 #include <utility>
 
 #define MARGIN (m_THandle.width())
@@ -20,7 +21,6 @@ SelectionWidget::SelectionWidget(QColor c, QWidget* parent)
   , m_color(std::move(c))
   , m_activeSide(NO_SIDE)
   , m_ignoreMouse(false)
-  , m_aspectRatio(1)
 {
     // prevents this widget from consuming CaptureToolButton mouse events
     setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -88,24 +88,6 @@ QVector<QRect> SelectionWidget::handlerAreas()
     return areas;
 }
 
-// helper function
-SelectionWidget::SideType getProperSide(SelectionWidget::SideType side,
-                                        const QRect& r)
-{
-    using SideType = SelectionWidget::SideType;
-    int intSide = side;
-    if (r.right() < r.left()) {
-        intSide ^= SideType::LEFT_SIDE;
-        intSide ^= SideType::RIGHT_SIDE;
-    }
-    if (r.bottom() < r.top()) {
-        intSide ^= SideType::TOP_SIDE;
-        intSide ^= SideType::BOTTOM_SIDE;
-    }
-
-    return (SideType)intSide;
-}
-
 void SelectionWidget::setIgnoreMouse(bool ignore)
 {
     m_ignoreMouse = ignore;
@@ -123,7 +105,10 @@ void SelectionWidget::setIdleCentralCursor(const QCursor& cursor)
 
 void SelectionWidget::setGeometryAnimated(const QRect& r)
 {
-    if (isVisible()) {
+    if (m_lockedAspectRatio > 0) {
+        setGeometry(r);
+        emit geometrySettled();
+    } else if (isVisible()) {
         m_animation->setStartValue(geometry());
         m_animation->setEndValue(r);
         m_animation->start();
@@ -131,6 +116,14 @@ void SelectionWidget::setGeometryAnimated(const QRect& r)
 }
 
 void SelectionWidget::setGeometry(const QRect& r)
+{
+    applyGeometry(
+      m_lockedAspectRatio > 0
+        ? SelectionGeometry::fit(r, m_lockedAspectRatio, parentWidget()->rect())
+        : r);
+}
+
+void SelectionWidget::applyGeometry(const QRect& r)
 {
     QWidget::setGeometry(r + QMargins(MARGIN, MARGIN, MARGIN, MARGIN));
     updateCursor();
@@ -158,6 +151,7 @@ bool SelectionWidget::eventFilter(QObject* obj, QEvent* event)
 {
     if (m_ignoreMouse && dynamic_cast<QMouseEvent*>(event)) {
         m_activeSide = NO_SIDE;
+        m_resizeSide = NO_SIDE;
         unsetCursor();
     } else if (event->type() == QEvent::MouseButtonRelease) {
         parentMouseReleaseEvent(static_cast<QMouseEvent*>(event));
@@ -169,216 +163,149 @@ bool SelectionWidget::eventFilter(QObject* obj, QEvent* event)
     return false;
 }
 
+void SelectionWidget::setAspectRatio(double ratio)
+{
+    if (!std::isfinite(ratio) || ratio < 0 || ratio == m_lockedAspectRatio) {
+        return;
+    }
+    m_animation->stop();
+    m_lockedAspectRatio = ratio;
+    if (isVisible() && ratio > 0) {
+        applyGeometry(
+          SelectionGeometry::fit(geometry(), ratio, parentWidget()->rect()));
+        emit geometrySettled();
+    }
+    emit aspectRatioChanged(ratio);
+}
+
+double SelectionWidget::aspectRatio() const
+{
+    return m_lockedAspectRatio;
+}
+
 void SelectionWidget::parentMousePressEvent(QMouseEvent* e)
 {
     if (e->button() != Qt::LeftButton) {
         return;
     }
-
+    m_animation->stop();
     m_dragStartPos = e->pos();
     m_activeSide = getMouseSide(e->pos());
-    if ((float)geometry().height() > 0) {
-        m_aspectRatio = (float)geometry().width() / (float)geometry().height();
+    m_resizeSide = m_activeSide;
+    m_creatingSelection = m_resizeSide == NO_SIDE;
+    m_dragGeometry = geometry();
+    if (m_dragGeometry.height() > 0 && m_dragGeometry.width() > 0) {
+        m_dragAspectRatio =
+          double(m_dragGeometry.width()) / m_dragGeometry.height();
     }
 }
 
 void SelectionWidget::parentMouseReleaseEvent(QMouseEvent* e)
 {
-    // released outside of the selection area
-    if (!getMouseSide(e->pos())) {
+    if (e->button() != Qt::LeftButton) {
+        return;
+    }
+    // The pointer may lie outside a constrained rectangle, especially at the
+    // capture boundary. Releasing a resize must still keep the selection.
+    if (!m_activeSide && !getMouseSide(e->pos())) {
         hide();
     }
-
     m_activeSide = NO_SIDE;
+    m_resizeSide = NO_SIDE;
     updateCursor();
     emit geometrySettled();
+}
+
+QRect SelectionWidget::resizedGeometry(const QPoint& pos,
+                                       bool symmetric,
+                                       double ratio,
+                                       SideType& activeSide) const
+{
+    const QRect& r = m_dragGeometry;
+    const bool left = m_resizeSide & LEFT_SIDE;
+    const bool right = m_resizeSide & RIGHT_SIDE;
+    const bool top = m_resizeSide & TOP_SIDE;
+    const bool bottom = m_resizeSide & BOTTOM_SIDE;
+    const bool horizontal = left || right;
+    const bool vertical = top || bottom;
+    const QPointF centre(r.x() + r.width() / 2.0, r.y() + r.height() / 2.0);
+    QPointF anchor(right ? r.x() : r.x() + r.width(),
+                   bottom ? r.y() : r.y() + r.height());
+    if (!horizontal) {
+        anchor.setX(r.x());
+    }
+    if (!vertical) {
+        anchor.setY(r.y());
+    }
+    if (symmetric) {
+        anchor = centre;
+    }
+    if (m_creatingSelection && !symmetric) {
+        // A newly selected area includes the press pixel in every direction.
+        anchor.setX(r.x() + (pos.x() < r.x() ? 1 : 0));
+        anchor.setY(r.y() + (pos.y() < r.y() ? 1 : 0));
+    }
+    const double dx =
+      horizontal ? pos.x() + (pos.x() >= anchor.x() ? 1 : 0) - anchor.x() : 0;
+    const double dy =
+      vertical ? pos.y() + (pos.y() >= anchor.y() ? 1 : 0) - anchor.y() : 0;
+    activeSide = static_cast<SideType>(
+      (horizontal ? (dx < 0 ? LEFT_SIDE : RIGHT_SIDE) : 0) |
+      (vertical ? (dy < 0 ? TOP_SIDE : BOTTOM_SIDE) : 0));
+    const QSizeF requested(
+      horizontal ? std::abs(dx) * (symmetric ? 2 : 1) : r.width(),
+      vertical ? std::abs(dy) * (symmetric ? 2 : 1) : r.height());
+    const QPointF fraction(symmetric ? 0.5 : (horizontal && dx < 0 ? 1 : 0),
+                           symmetric ? 0.5 : (vertical && dy < 0 ? 1 : 0));
+    if (ratio > 0) {
+        const auto dimension =
+          horizontal && vertical ? SelectionGeometry::Dimension::Both
+          : horizontal           ? SelectionGeometry::Dimension::Width
+                                 : SelectionGeometry::Dimension::Height;
+        return SelectionGeometry::constrain(requested,
+                                            anchor,
+                                            fraction,
+                                            ratio,
+                                            parentWidget()->rect(),
+                                            dimension);
+    }
+    const QSize size(qMax(1, qRound(requested.width())),
+                     qMax(1, qRound(requested.height())));
+    return { qRound(anchor.x() - fraction.x() * size.width()),
+             qRound(anchor.y() - fraction.y() * size.height()),
+             size.width(),
+             size.height() };
 }
 
 void SelectionWidget::parentMouseMoveEvent(QMouseEvent* e)
 {
     updateCursor();
-
     if (e->buttons() != Qt::LeftButton) {
         return;
     }
-
-    SideType mouseSide = m_activeSide;
-    if (!m_activeSide) {
-        mouseSide = getMouseSide(e->pos());
-    }
-
-    QPoint pos;
-
-    if (!isVisible() || !mouseSide) {
+    if (!m_resizeSide) {
+        // Start a fresh selection from the press point, in any drag direction.
+        m_dragGeometry = QRect(m_dragStartPos, QSize(1, 1));
+        m_resizeSide = BOTTOMRIGHT_SIDE;
+        m_activeSide = BOTTOMRIGHT_SIDE;
+        m_dragAspectRatio = 1;
         show();
-        m_activeSide = TOPLEFT_SIDE;
-        pos = m_dragStartPos;
-        setGeometry({ pos, pos });
-    } else {
-        pos = e->pos();
     }
-
-    auto geom = geometry();
-    bool symmetryMod = qApp->keyboardModifiers() & Qt::ShiftModifier;
-    bool preserveAspect = qApp->keyboardModifiers() & Qt::ControlModifier;
-
-    QPoint newTopLeft = geom.topLeft(), newBottomRight = geom.bottomRight();
-    int oldLeft = newTopLeft.rx(), oldRight = newBottomRight.rx(),
-        oldTop = newTopLeft.ry(), oldBottom = newBottomRight.ry();
-    int &newLeft = newTopLeft.rx(), &newRight = newBottomRight.rx(),
-        &newTop = newTopLeft.ry(), &newBottom = newBottomRight.ry();
-    switch (mouseSide) {
-        case TOPLEFT_SIDE:
-            if (m_activeSide) {
-                if (preserveAspect) {
-                    if ((float)(oldRight - pos.x()) /
-                          (float)(oldBottom - pos.y()) >
-                        m_aspectRatio) {
-                        /* width longer than expected width, hence increase
-                         * height to compensate for the aspect ratio */
-                        newLeft = pos.x();
-                        newTop =
-                          oldBottom -
-                          (int)(((float)(oldRight - pos.x())) / m_aspectRatio);
-                    } else {
-                        /* height longer than expected height, hence increase
-                         * width to compensate for the aspect ratio */
-                        newTop = pos.y();
-                        newLeft =
-                          oldRight -
-                          (int)(((float)(oldBottom - pos.y())) * m_aspectRatio);
-                    }
-                } else {
-                    newTopLeft = pos;
-                }
-            }
-            break;
-        case BOTTOMRIGHT_SIDE:
-            if (m_activeSide) {
-                if (preserveAspect) {
-                    if ((float)(pos.x() - oldLeft) / (float)(pos.y() - oldTop) >
-                        m_aspectRatio) {
-                        newRight = pos.x();
-                        newBottom =
-                          oldTop +
-                          (int)(((float)(pos.x() - oldLeft)) / m_aspectRatio);
-                    } else {
-                        newBottom = pos.y();
-                        newRight = oldLeft + (int)(((float)(pos.y() - oldTop)) *
-                                                   m_aspectRatio);
-                    }
-                } else {
-                    newBottomRight = pos;
-                }
-            }
-            break;
-        case TOPRIGHT_SIDE:
-            if (m_activeSide) {
-                if (preserveAspect) {
-                    if ((float)(pos.x() - oldLeft) /
-                          (float)(oldBottom - pos.y()) >
-                        m_aspectRatio) {
-                        newRight = pos.x();
-                        newTop =
-                          oldBottom -
-                          (int)(((float)(pos.x() - oldLeft)) / m_aspectRatio);
-                    } else {
-                        newTop = pos.y();
-                        newRight =
-                          oldLeft +
-                          (int)(((float)(oldBottom - pos.y())) * m_aspectRatio);
-                    }
-                } else {
-                    newTop = pos.y();
-                    newRight = pos.x();
-                }
-            }
-            break;
-        case BOTTOMLEFT_SIDE:
-            if (m_activeSide) {
-                if (preserveAspect) {
-                    if ((float)(oldRight - pos.x()) /
-                          (float)(pos.y() - oldTop) >
-                        m_aspectRatio) {
-                        newLeft = pos.x();
-                        newBottom =
-                          oldTop +
-                          (int)(((float)(oldRight - pos.x())) / m_aspectRatio);
-                    } else {
-                        newBottom = pos.y();
-                        newLeft = oldRight - (int)(((float)(pos.y() - oldTop)) *
-                                                   m_aspectRatio);
-                    }
-                } else {
-                    newBottom = pos.y();
-                    newLeft = pos.x();
-                }
-            }
-            break;
-        case LEFT_SIDE:
-            if (m_activeSide) {
-                newLeft = pos.x();
-                if (preserveAspect) {
-                    /* By default bottom edge moves when dragging sides, this
-                     * behavior feels natural */
-                    newBottom = oldTop + (int)(((float)(oldRight - pos.x())) /
-                                               m_aspectRatio);
-                }
-            }
-            break;
-        case RIGHT_SIDE:
-            if (m_activeSide) {
-                newRight = pos.x();
-                if (preserveAspect) {
-                    newBottom = oldTop + (int)(((float)(pos.x() - oldLeft)) /
-                                               m_aspectRatio);
-                }
-            }
-            break;
-        case TOP_SIDE:
-            if (m_activeSide) {
-                newTop = pos.y();
-                if (preserveAspect) {
-                    /* By default right edge moves when dragging sides, this
-                     * behavior feels natural */
-                    newRight =
-                      oldLeft +
-                      (int)(((float)(oldBottom - pos.y()) * m_aspectRatio));
-                }
-            }
-            break;
-        case BOTTOM_SIDE:
-            if (m_activeSide) {
-                newBottom = pos.y();
-                if (preserveAspect) {
-                    newRight =
-                      oldLeft +
-                      (int)(((float)(pos.y() - oldTop) * m_aspectRatio));
-                }
-            }
-            break;
-        default:
-            if (m_activeSide) {
-                move(this->pos() + pos - m_dragStartPos);
-                m_dragStartPos = pos;
-                /* do nothing special in case of preserveAspect */
-            }
-            return;
+    if (m_resizeSide == CENTER) {
+        const QRect moved =
+          m_dragGeometry.translated(e->pos() - m_dragStartPos);
+        applyGeometry(
+          m_lockedAspectRatio > 0
+            ? SelectionGeometry::moveWithinBounds(moved, parentWidget()->rect())
+            : moved);
+        return;
     }
-    // finalize geometry change
-    if (m_activeSide) {
-        if (symmetryMod) {
-            QPoint deltaTopLeft = newTopLeft - geom.topLeft();
-            QPoint deltaBottomRight = newBottomRight - geom.bottomRight();
-            newTopLeft = geom.topLeft() + deltaTopLeft - deltaBottomRight;
-            newBottomRight =
-              geom.bottomRight() + deltaBottomRight - deltaTopLeft;
-        }
-        geom = { newTopLeft, newBottomRight };
-        setGeometry(geom.normalized());
-        m_activeSide = getProperSide(m_activeSide, geom);
-    }
-    m_dragStartPos = e->pos();
+    const bool symmetric = e->modifiers() & Qt::ShiftModifier;
+    const double ratio = m_lockedAspectRatio > 0 ? m_lockedAspectRatio
+                         : (e->modifiers() & Qt::ControlModifier)
+                           ? m_dragAspectRatio
+                           : 0;
+    applyGeometry(resizedGeometry(e->pos(), symmetric, ratio, m_activeSide));
 }
 
 void SelectionWidget::paintEvent(QPaintEvent*)
@@ -556,14 +483,33 @@ void SelectionWidget::updateCursor()
 void SelectionWidget::setGeometryByKeyboard(const QRect& r)
 {
     static QTimer timer;
-    QRect rectangle = r.intersected(parentWidget()->rect());
-    if (rectangle.width() <= 0) {
-        rectangle.setWidth(1);
+    QRect rectangle;
+    const QRect current = geometry();
+    if (m_lockedAspectRatio > 0 && r.size() != current.size()) {
+        const bool symmetric = r.topLeft() != current.topLeft();
+        const QPointF anchor = symmetric
+                                 ? QPointF(current.x() + current.width() / 2.0,
+                                           current.y() + current.height() / 2.0)
+                                 : QPointF(current.topLeft());
+        const auto dimension = r.width() != current.width()
+                                 ? SelectionGeometry::Dimension::Width
+                                 : SelectionGeometry::Dimension::Height;
+        rectangle = SelectionGeometry::constrain(r.size(),
+                                                 anchor,
+                                                 symmetric ? QPointF(0.5, 0.5)
+                                                           : QPointF(0, 0),
+                                                 m_lockedAspectRatio,
+                                                 parentWidget()->rect(),
+                                                 dimension);
+    } else if (m_lockedAspectRatio > 0) {
+        rectangle =
+          SelectionGeometry::moveWithinBounds(r, parentWidget()->rect());
+    } else {
+        rectangle = r.intersected(parentWidget()->rect());
+        rectangle.setWidth(qMax(1, rectangle.width()));
+        rectangle.setHeight(qMax(1, rectangle.height()));
     }
-    if (rectangle.height() <= 0) {
-        rectangle.setHeight(1);
-    }
-    setGeometry(rectangle);
+    applyGeometry(rectangle);
     connect(&timer,
             &QTimer::timeout,
             this,
